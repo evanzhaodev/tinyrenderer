@@ -34,70 +34,46 @@ void line(int x0, int y0, int x1, int y1, TGAImage& image, const TGAColor& color
     }
 }
 
-float Vec2Distance(Vec2i v0, Vec2i v1) {
-    return std::sqrtf((v1.x - v0.x) * (v1.x - v0.x) + (v1.y - v0.y) * (v1.y - v0.y));
+Vec3f barycentric(Vec2i* pts, Vec2i& P) {
+    Vec3f coord = Vec3f(pts[1].x - pts[0].x, pts[2].x - pts[0].x, pts[0].x - P.x) 
+        ^ Vec3f(pts[1].y - pts[0].y, pts[2].y - pts[0].y, pts[0].y - P.y);
+    if (std::abs(coord.z) < 1)
+        return Vec3f(-1, -1, -1);
+    return Vec3f(1.f - (coord.x + coord.y) / coord.z, coord.x / coord.z, coord.y / coord.z);
 }
 
-void triangle(Vec2i t0, Vec2i t1, Vec2i t2, TGAImage& image, const TGAColor& color) {
-    if (t0.x > t1.x) {
-        std::swap(t1, t0);
-    }
-    if (t0.x > t2.x) {
-        std::swap(t2, t0);
-    }
-    if (t1.x > t2.x) {
-        std::swap(t2, t1);
-    }
+void triangle(Vec2i* pts, TGAImage& image, const TGAColor& color) {
+    Vec2i bboxmin(image.width() - 1, image.height() - 1);
+    Vec2i bboxmax(0, 0);
 
-    for (int x = t0.x; x <= t1.x; x++) {
-        int y1 = t0.y + 1.f * (x - t0.x) * (t1.y - t0.y) / (t1.x - t0.x);
-        int y2 = t0.y + 1.f * (x - t0.x) * (t2.y - t0.y) / (t2.x - t0.x);
+    for (int i = 0; i < 3; i++) {
+        bboxmax.x = std::max(bboxmax.x, pts[i].x);
+        bboxmax.y = std::max(bboxmax.y, pts[i].y);
+        bboxmax.x = std::min(bboxmax.x, image.width() - 1);
+        bboxmax.y = std::min(bboxmax.y, image.height() - 1);
 
-        line(x, y1, x, y2, image, color);
+        bboxmin.x = std::min(bboxmin.x, pts[i].x);
+        bboxmin.y = std::min(bboxmin.y, pts[i].y);
+        bboxmin.x = std::max(bboxmin.x, 0);
+        bboxmin.y = std::max(bboxmin.y, 0);
     }
 
-    for (int x = t2.x; x >= t1.x; x--) {
-        int y1 = t2.y - 1.f * (t2.x - x) * (t2.y - t1.y) / (t2.x - t1.x);
-        int y2 = t2.y - 1.f * (t2.x - x) * (t2.y - t0.y) / (t2.x - t0.x);
+    Vec2i P;
+    for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++) {
+        for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++) {
+            Vec3f barycentricCoord = barycentric(pts, P);
+            if (barycentricCoord.x < 0 || barycentricCoord.y < 0 || barycentricCoord.z < 0)
+                continue;
 
-        line(x, y1, x, y2, image, color);
+            image.set(P.x, P.y, color);
+        }
     }
 }
 
 int main(int argc, char** argv) {
-    Model* model = NULL;
-    const int width = 800;
-    const int height = 800;
-
-    if (2 == argc) {
-        model = new Model(argv[1]);
-    }
-    else {
-        model = new Model("obj/african_head.obj");
-    }
-
-    TGAImage image(width, height, TGAImage::RGB);
-    /*for (int i = 0; i < model->nfaces(); i++) {
-        std::vector<int> face = model->face(i);
-        for (int j = 0; j < 3; j++) {
-            Vec3f v0 = model->vert(face[j]);
-            Vec3f v1 = model->vert(face[(j + 1) % 3]);
-            int x0 = (v0.x + 1.) * width / 2.;
-            int y0 = (v0.y + 1.) * height / 2.;
-            int x1 = (v1.x + 1.) * width / 2.;
-            int y1 = (v1.y + 1.) * height / 2.;
-            line(x0, y0, x1, y1, image, white);
-        }
-    }*/
-
-    Vec2i t0[3] = { Vec2i(10, 70),   Vec2i(50, 160),  Vec2i(70, 80) };
-    Vec2i t1[3] = { Vec2i(180, 50),  Vec2i(150, 1),   Vec2i(70, 180) };
-    Vec2i t2[3] = { Vec2i(180, 150), Vec2i(120, 160), Vec2i(130, 180) };
-    triangle(t0[0], t0[1], t0[2], image, red);
-    triangle(t1[0], t1[1], t1[2], image, white);
-    triangle(t2[0], t2[1], t2[2], image, green);
-
-    image.write_tga_file("output.tga");
-    delete model;
+    TGAImage frame(200, 200, TGAImage::RGB);
+    Vec2i pts[3] = { Vec2i(10,10), Vec2i(100, 30), Vec2i(190, 160) };
+    triangle(pts, frame, red);
+    frame.write_tga_file("framebuffer.tga");
     return 0;
 }
